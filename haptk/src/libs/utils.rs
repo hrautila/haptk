@@ -97,6 +97,10 @@ pub fn filter_samples(samples: &Vec<String>, wanted: Option<Vec<String>>) -> Vec
     }
 }
 
+pub fn current_pool_size() -> usize {
+    rayon::current_num_threads()
+}
+
 #[cfg(test)]
 #[rustfmt::skip]
 mod tests {

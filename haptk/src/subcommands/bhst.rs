@@ -4,7 +4,6 @@ use color_eyre::{
     eyre::{ensure, eyre, Context},
     Result,
 };
-use ndarray::s;
 use petgraph::prelude::NodeIndex;
 use petgraph::{Direction, Graph};
 use rayon::prelude::*;
@@ -16,7 +15,7 @@ use crate::{
     io::{get_output, open_csv_writer, push_to_output, read_sample_ids, read_variable_data_file},
     read_vcf::{get_sample_names, read_vcf_to_matrix},
     structs::{Coord, HapVariant, PhasedMatrix, CoordDataSlot},
-    utils::parse_snp_coord,
+    utils::{parse_snp_coord, current_pool_size}
 };
 
 pub fn read_vcf_with_selections(args: &StandardArgs) -> Result<PhasedMatrix> {
@@ -144,7 +143,7 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
         indexes: (0..vcf.matrix.nrows()).collect(),
         haplotype: vec![],
     });
-
+    let num_chunks = 2 * current_pool_size();
     let mut min_size_blacklist = vec![];
     loop {
         // Filter out nodes with children and nodes with less indexes than min_size
@@ -163,12 +162,14 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
             })
             .collect::<Vec<NodeIndex>>();
 
-        // Multithread horizontally all childless nodes
+        let chunk_size = 1_usize.max(indices.len() / num_chunks);
+            // Multithread horizontally all childless nodes
         let nodes = indices
-            .into_par_iter()
-            .filter_map(|node_idx| {
-                find_contradictory_gt(vcf, &bhst, node_idx).map(|nodes| (node_idx, nodes))
-            })
+            .par_chunks(chunk_size)
+            .filter_map(|node_slice| {
+                    find_contradictory_gt_slice(vcf, &bhst, node_slice)
+                })
+            .flatten()
             .collect::<Vec<(NodeIndex, Vec<Node>)>>();
 
         // Terminate if no new nodes will be added to the tree
@@ -194,6 +195,23 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
         }
     }
     bhst
+}
+
+fn find_contradictory_gt_slice(
+    vcf: &PhasedMatrix,
+    bhst: &Graph<Node, u8>,
+    nodes: &[NodeIndex]
+) -> Option<Vec<(NodeIndex, Vec<Node>)>> {
+    let res =  nodes
+        .into_iter()
+        .filter_map(|node_idx| {
+            find_contradictory_gt(vcf, &bhst, *node_idx).map(|nodes| (*node_idx, nodes))
+        }).collect::<Vec<(NodeIndex, Vec<Node>)>>();
+
+    match res.is_empty() {
+        true  => None,
+        false => Some(res)
+    }
 }
 
 #[doc(hidden)]
