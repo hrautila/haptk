@@ -14,8 +14,13 @@ use crate::{
     graphs::HstGraph,
     io::{get_output, open_csv_writer, push_to_output, read_sample_ids, read_variable_data_file},
     read_vcf::{get_sample_names, read_vcf_to_matrix},
+<<<<<<< HEAD
     structs::{Coord, HapVariant, PhasedMatrix, CoordDataSlot},
     utils::{parse_snp_coord, current_pool_size}
+=======
+    structs::{Coord, CoordDataSlot, HapVariant, PhasedMatrix},
+    utils::parse_snp_coord,
+>>>>>>> main
 };
 
 pub fn read_vcf_with_selections(args: &StandardArgs) -> Result<PhasedMatrix> {
@@ -152,7 +157,7 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
     let num_chunks = 2 * current_pool_size();
     let mut min_size_blacklist = vec![];
     loop {
-        // Filter out nodes with children and nodes with less indexes than min_size
+        // Filter out non leaf nodes and nodes with less indexes than min_size.max(2)
         let indices = bhst
             .node_indices()
             .filter(|node_idx| !min_size_blacklist.contains(node_idx))
@@ -168,8 +173,12 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
             })
             .collect::<Vec<NodeIndex>>();
 
+<<<<<<< HEAD
         let chunk_size = 1_usize.max(indices.len() / num_chunks);
             // Multithread horizontally all childless nodes
+=======
+        // Iterate through the filtered leaf nodes in parallel
+>>>>>>> main
         let nodes = indices
             .par_chunks(chunk_size)
             .filter_map(|node_slice| {
@@ -183,7 +192,7 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
             break;
         }
 
-        // Add nodes to the tree
+        // Add new nodes to the tree
         for (node_idx, new_nodes) in nodes {
             let bhst_node_count_before = bhst.node_count();
 
@@ -232,7 +241,8 @@ fn find_contradictory_gt(
 ) -> Option<Vec<Node>> {
     let node = bhst.node_weight(node_idx).unwrap();
     let (left_idx, mut right_idx) = (node.start_idx, node.stop_idx);
-    // Minus 1 to account for the starting variant itself as well
+
+    // Minus 1 to account for the starting variant itself as well in the root node
     if node_idx == NodeIndex::new(0) {
         right_idx = right_idx.saturating_sub(1);
     }
@@ -241,6 +251,7 @@ fn find_contradictory_gt(
     let next = vcf.next_contradictory(right_idx, &node.indexes);
 
     // Allocate Vecs with capacity so no reallocation is required
+    // NOTE: Benchmarking required
     let (mut zo, mut zz, mut oz, mut oo) = (
         Vec::with_capacity(node.indexes.len()),
         Vec::with_capacity(node.indexes.len()),
@@ -256,73 +267,51 @@ fn find_contradictory_gt(
                 let right_bit = right_vec[*i] == 1;
                 match (left_bit, right_bit) {
                     (false, false) => zz.push(*i),
-                    (false, true)  => zo.push(*i),
-                    (true,  false) => oz.push(*i),
-                    (true,  true)  => oo.push(*i),
+                    (false, true) => zo.push(*i),
+                    (true, false) => oz.push(*i),
+                    (true, true) => oo.push(*i),
                 }
             }
             // Create a new node for each bucket if it is not empty
             let nodes = create_nodes_from_buckets(vcf, left, right, oo, oz, zo, zz);
             Some(nodes)
         }
-        (_, _) => None
-    }
-}
+        (Some(left), None) => {
+            tracing::warn!(
+                "Genotyping data ran out on the right with samples {:?}",
+                vcf.get_sample_names(&node.indexes)
+            );
 
-#[allow(dead_code)]
-fn find_contradictory_nodes(
-    vcf: &PhasedMatrix,
-    bhst: &Graph<Node, u8>,
-    node_idx: NodeIndex,
-) -> Option<Vec<Node>> {
-    let node = bhst.node_weight(node_idx).unwrap();
-    let (left_idx, mut right_idx) = (node.start_idx, node.stop_idx);
-    // Minus 1 to account for the starting variant itself as well
-    if node_idx == NodeIndex::new(0) {
-        right_idx = right_idx.saturating_sub(1);
-    }
-
-    let prev = vcf.prev_contradictory(left_idx, &node.indexes);
-    let next = vcf.next_contradictory(right_idx, &node.indexes);
-
-    match (prev, next) {
-        (Some(left), Some(right)) => {
-            let nodes = create_contradictory_nodes(vcf, &node.indexes, left, right);
+            let left_vec = vcf.get_slot(left);
+            for i in node.indexes.iter() {
+                match left_vec[*i] == 1 {
+                    true => oz.push(*i),
+                    false => zz.push(*i),
+                }
+            }
+            let nodes =
+                create_nodes_from_buckets(vcf, left, vcf.matrix.ncols() - 1, oo, oz, zo, zz);
             Some(nodes)
         }
-        (_, _) => None
-    }
-}
+        (None, Some(right)) => {
+            tracing::warn!(
+                "Genotyping data ran out on the left with samples {:?}",
+                vcf.get_sample_names(&node.indexes)
+            );
 
-#[allow(dead_code)]
-fn create_contradictory_nodes(
-    vcf: &PhasedMatrix, indexes: &Vec<usize>, left_idx: usize, right_idx: usize
-) -> Vec<Node> {
-    let mut nodes = vec![Node {
-        start_idx: left_idx,
-        stop_idx: right_idx,
-        haplotype: vec![0; 0],
-        indexes: Vec::with_capacity(indexes.len()),
-    }; 4];
-
-    let left_vec = vcf.get_slot(left_idx);
-    let right_vec = vcf.get_slot(right_idx);
-    for i in indexes.iter() {
-        let left_bit = left_vec[*i] == 1;
-        let right_bit = right_vec[*i] == 1;
-        match (left_bit, right_bit) {
-            (false, false) => nodes[0].indexes.push(*i),  // zz
-            (false, true)  => nodes[1].indexes.push(*i),  // zo
-            (true,  false) => nodes[2].indexes.push(*i),  // oz
-            (true,  true)  => nodes[3].indexes.push(*i),  // oo
+            let right_vec = vcf.get_slot(right);
+            for i in node.indexes.iter() {
+                match right_vec[*i] == 1 {
+                    true => zo.push(*i),
+                    false => zz.push(*i),
+                }
+            }
+            let nodes = create_nodes_from_buckets(vcf, 0, right, oo, oz, zo, zz);
+            Some(nodes)
         }
+        (None, None) => None,
     }
-    // Filter out nodes with no indexes
-    nodes.into_iter()
-        .filter(|node| !node.indexes.is_empty())
-        .collect()
 }
-
 
 #[allow(dead_code)]
 fn create_nodes_from_buckets(
@@ -375,6 +364,104 @@ fn create_nodes_from_buckets(
         nodes.push(node);
     }
     nodes
+}
+
+enum Directions {
+    Both,
+    Left,
+    Right,
+}
+
+#[allow(dead_code)]
+fn find_contradictory_nodes(
+    vcf: &PhasedMatrix,
+    bhst: &Graph<Node, u8>,
+    node_idx: NodeIndex,
+) -> Option<Vec<Node>> {
+    let node = bhst.node_weight(node_idx).unwrap();
+    let (left_idx, mut right_idx) = (node.start_idx, node.stop_idx);
+    // Minus 1 to account for the starting variant itself as well
+    if node_idx == NodeIndex::new(0) {
+        right_idx = right_idx.saturating_sub(1);
+    }
+
+    let prev = vcf.prev_contradictory(left_idx, &node.indexes);
+    let next = vcf.next_contradictory(right_idx, &node.indexes);
+
+    match (prev, next) {
+        (Some(left), Some(right)) => {
+            let nodes = create_contradictory_nodes(vcf, &node.indexes, left, right, Direction::Both);
+            Some(nodes)
+        }
+        (Some(left), None) => {
+            let nodes = create_contradictory_nodes(vcf, &node.indexes, left, 0, Direction::Left);
+            Some(nodes)
+        }
+        (None, Some(right)) => {
+            let nodes = create_contradictory_nodes(vcf, &node.indexes, 0, right, Direction::Right);
+            Some(nodes)
+        }
+        (_, _) => None
+    }
+}
+
+#[allow(dead_code)]
+fn create_contradictory_nodes(
+    vcf: &PhasedMatrix, indexes: &Vec<usize>, left_idx: usize, right_idx: usize, direction: Direction
+) -> Vec<Node> {
+    let mut nodes = vec![Node {
+        start_idx: left_idx,
+        stop_idx: right_idx,
+        haplotype: vec![0; 0],
+        indexes: Vec::with_capacity(indexes.len()),
+    }; 4];
+
+    match direction {
+        Both => {
+            let left_vec = vcf.get_slot(left_idx);
+            let right_vec = vcf.get_slot(right_idx);
+            for i in indexes.iter() {
+                let left_bit = left_vec[*i] == 1;
+                let right_bit = right_vec[*i] == 1;
+                match (left_bit, right_bit) {
+                    (false, false) => nodes[0].indexes.push(*i),  // zz
+                    (false, true)  => nodes[1].indexes.push(*i),  // zo
+                    (true,  false) => nodes[2].indexes.push(*i),  // oz
+                    (true,  true)  => nodes[3].indexes.push(*i),  // oo
+                }
+            }
+        },
+        Left => {
+            tracing::warn!(
+                "Genotyping data ran out on the right with samples {:?}",
+                vcf.get_sample_names(indexes)
+            );
+            let left_vec = vcf.get_slot(left_idx);
+            for i in indexes.iter() {
+                match left_vec[*i] == 1 {
+                    false => nodes[0].indexes.push(*i), // zz
+                    true => nodes[2].indexes.push(*i),  // oz
+                }
+            }
+        },
+        Right => {
+            tracing::warn!(
+                "Genotyping data ran out on the left with samples {:?}",
+                vcf.get_sample_names(indexes)
+            );
+            let right_vec = vcf.get_slot(left_idx);
+            for i in indexes.iter() {
+                match right_vec[*i] == 1 {
+                    false => nodes[0].indexes.push(*i), // zz
+                    true => nodes[1].indexes.push(*i),  // zo
+                }
+            }
+        }
+    }
+    // Filter out nodes with no indexes
+    nodes.into_iter()
+        .filter(|node| !node.indexes.is_empty())
+        .collect()
 }
 
 pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVariant>> {
