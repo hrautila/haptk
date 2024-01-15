@@ -1,5 +1,6 @@
 target/
 .git/
+.vscode/
 Cargo.lock
 *.svg
 *.png
@@ -11,6 +12,7 @@ test_data/
 svgs/
 temp/
 cargo-test-*
+tmp_*
 src-old/
 1kGP*
 over_20_repeats.ids
