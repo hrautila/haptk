@@ -190,10 +190,12 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
 
             for new_node in new_nodes {
                 if new_node.indexes.len() >= min_size {
-                    let mut graph_node = new_node.clone();
-                    graph_node.update_u8_haplotype(vcf);
-                    let new_node_idx = bhst.add_node(graph_node);
+                    // This is needed for later variant. 
+                    // let mut graph_node = new_node.clone();
+                    // graph_node.update_u8_haplotype(vcf);
+                    // let new_node_idx = bhst.add_node(graph_node);
 
+                    let new_node_idx = bhst.add_node(new_node.clone());
                     bhst.add_edge(node_idx, new_node_idx, 0);
                 }
             }
