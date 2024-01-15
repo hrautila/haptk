@@ -113,6 +113,7 @@ pub struct Node {
     pub haplotype: Vec<u8>,
 }
 
+#[allow(dead_code)]
 impl Node {
     fn update_u8_haplotype(&mut self, vcf: &PhasedMatrix) {
         self.haplotype = vcf.find_u8_haplotype_for_sample(self.start_idx..self.stop_idx + 1, self.indexes[0]);
