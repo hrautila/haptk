@@ -14,13 +14,8 @@ use crate::{
     graphs::HstGraph,
     io::{get_output, open_csv_writer, push_to_output, read_sample_ids, read_variable_data_file},
     read_vcf::{get_sample_names, read_vcf_to_matrix},
-<<<<<<< HEAD
     structs::{Coord, HapVariant, PhasedMatrix, CoordDataSlot},
     utils::{parse_snp_coord, current_pool_size}
-=======
-    structs::{Coord, CoordDataSlot, HapVariant, PhasedMatrix},
-    utils::parse_snp_coord,
->>>>>>> main
 };
 
 pub fn read_vcf_with_selections(args: &StandardArgs) -> Result<PhasedMatrix> {
@@ -173,12 +168,9 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
             })
             .collect::<Vec<NodeIndex>>();
 
-<<<<<<< HEAD
         let chunk_size = 1_usize.max(indices.len() / num_chunks);
-            // Multithread horizontally all childless nodes
-=======
+        // Multithread horizontally all childless nodes
         // Iterate through the filtered leaf nodes in parallel
->>>>>>> main
         let nodes = indices
             .par_chunks(chunk_size)
             .filter_map(|node_slice| {
@@ -390,15 +382,15 @@ fn find_contradictory_nodes(
 
     match (prev, next) {
         (Some(left), Some(right)) => {
-            let nodes = create_contradictory_nodes(vcf, &node.indexes, left, right, Direction::Both);
+            let nodes = create_contradictory_nodes(vcf, &node.indexes, left, right, Directions::Both);
             Some(nodes)
         }
         (Some(left), None) => {
-            let nodes = create_contradictory_nodes(vcf, &node.indexes, left, 0, Direction::Left);
+            let nodes = create_contradictory_nodes(vcf, &node.indexes, left, 0, Directions::Left);
             Some(nodes)
         }
         (None, Some(right)) => {
-            let nodes = create_contradictory_nodes(vcf, &node.indexes, 0, right, Direction::Right);
+            let nodes = create_contradictory_nodes(vcf, &node.indexes, 0, right, Directions::Right);
             Some(nodes)
         }
         (_, _) => None
@@ -407,7 +399,7 @@ fn find_contradictory_nodes(
 
 #[allow(dead_code)]
 fn create_contradictory_nodes(
-    vcf: &PhasedMatrix, indexes: &Vec<usize>, left_idx: usize, right_idx: usize, direction: Direction
+    vcf: &PhasedMatrix, indexes: &Vec<usize>, left_idx: usize, right_idx: usize, direction: Directions
 ) -> Vec<Node> {
     let mut nodes = vec![Node {
         start_idx: left_idx,
@@ -417,7 +409,7 @@ fn create_contradictory_nodes(
     }; 4];
 
     match direction {
-        Both => {
+        Directions::Both => {
             let left_vec = vcf.get_slot(left_idx);
             let right_vec = vcf.get_slot(right_idx);
             for i in indexes.iter() {
@@ -431,7 +423,7 @@ fn create_contradictory_nodes(
                 }
             }
         },
-        Left => {
+        Directions::Left => {
             tracing::warn!(
                 "Genotyping data ran out on the right with samples {:?}",
                 vcf.get_sample_names(indexes)
@@ -444,7 +436,7 @@ fn create_contradictory_nodes(
                 }
             }
         },
-        Right => {
+        Directions::Right => {
             tracing::warn!(
                 "Genotyping data ran out on the left with samples {:?}",
                 vcf.get_sample_names(indexes)
