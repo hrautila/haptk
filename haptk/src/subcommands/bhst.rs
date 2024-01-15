@@ -214,8 +214,8 @@ fn find_contradictory_gt_slice(
     let res =  nodes
         .iter()
         .filter_map(|node_idx| {
-            //find_contradictory_gt(vcf, &bhst, *node_idx).map(|nodes| (*node_idx, nodes))
-            find_contradictory_nodes(vcf, &bhst, *node_idx).map(|nodes| (*node_idx, nodes))
+            find_contradictory_gt(vcf, &bhst, *node_idx).map(|nodes| (*node_idx, nodes))
+            //find_contradictory_nodes(vcf, &bhst, *node_idx).map(|nodes| (*node_idx, nodes))
         }).collect::<Vec<(NodeIndex, Vec<Node>)>>();
 
     match res.is_empty() {
