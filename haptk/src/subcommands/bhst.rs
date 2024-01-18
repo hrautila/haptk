@@ -224,14 +224,13 @@ fn find_contradictory_gt_slice(
     }
 }
 
-#[doc(hidden)]
-
 enum Directions {
     Both,
     Left,
     Right,
 }
 
+#[doc(hidden)]
 fn find_contradictory_nodes(
     vcf: &PhasedMatrix,
     bhst: &Graph<Node, u8>,
